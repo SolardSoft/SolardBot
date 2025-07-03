@@ -1,0 +1,21 @@
+# Виртуальное окружение
+venv/
+env/
+
+# Токен
+.env
+
+# Кэш Python
+__pycache__/
+*.py[cod]
+
+# Файлы журналов
+*.log
+
+# Файлы IDE
+.vscode/
+.idea/
+
+# Базы данных
+*.sqlite3
+*.db
