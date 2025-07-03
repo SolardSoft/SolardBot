@@ -3,7 +3,7 @@ venv/
 env/
 
 # Токен
-.env
+*.env
 
 # Кэш Python
 __pycache__/
