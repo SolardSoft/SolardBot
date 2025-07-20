@@ -54,35 +54,43 @@ class BotHandler:
             'scanner': Device(
                 name="Сканер",
                 models={
-                    'netum': DeviceModel(name="Netum", numbers=["c750", "x200", "v100"]),
-                    'kefar': DeviceModel(name="Kefar", numbers=["k10", "k20"])
+                    'netum': DeviceModel(name="Netum", numbers=["C750", "1228BL"]),
+                    'kefar': DeviceModel(name="Kefar", numbers=["H4W/H4B", "C70"]),
+                    'holyhah': DeviceModel(name="Holyhah", numbers=["A60DZ/A66DZ", "A30D/A3D"]),
+                    'chiypos': DeviceModel(name="Chiypos", numbers=["1680SW", "1690SW"]),
                 },
                 common_questions={
-                    "Инструкция": Solution(text="Инструкция на русском языке:", content_type="file")
+                    "Инструкция": Solution(text="Инструкция на русском языке:", content_type="file"),
+                    "Сброс настроек": Solution(text="Отсканируйте код(ы) для сброса настроек:", content_type="image")
                 }
             ),
             'printer': Device(
                 name="Принтер",
                 models={
-                    'xprinter': DeviceModel(name="XPrinter", numbers=["p100", "p200"])
+                    'xprinter': DeviceModel(name="XPrinter", numbers=["XP365B", "XP422"]),
+                    'niimbot': DeviceModel(name="NIIMBOT", numbers=["B21", "D11", "D110"])
                 },
-                common_questions={}
+                common_questions={
+                    "Инструкция": Solution(text="Инструкция на русском языке:", content_type="file")
+                }
             ),
             'pager': Device(
-                name="Пейджер",
+                name="Пейджеры",
                 models={
-                    'td': DeviceModel(name="TD", numbers=["td100"])
+                    'td': DeviceModel(name="TD", numbers=["TD175", "TD157"])
                 },
-                common_questions={}
+                common_questions={
+                    "Инструкция": Solution(text="Инструкция на русском языке:", content_type="file")
+                }
             )
         }
         
         self.model_questions = {
-            'scanner/netum/c750': {
-                "Не включается": Solution(text="Проверьте питание и кнопку включения"),
-                "Не сканирует": Solution(text="Проверьте подключение к компьютеру")
+            'scanner/netum/C750': {
+                "Не включается": Solution(text="Возможно, он сильно разряжен, или вы его некорректно заряжали. Убедитесь, что мощность зарядки не более 5В-1А"),
+                "Не сканирует": Solution(text="Помогите, меня держат в плену :'(", )
             },
-            'scanner/kefar/k10': {
+            'scanner/kefar/1': {
                 "Греется": Solution(text="Дайте устройству остыть")
             }
         }
@@ -98,7 +106,7 @@ class BotHandler:
 #################
 
             'model': """
-Хорошо. Теперь выберите модель устройства, она указана на коробке или маркетплейсе, где приобрели товар.
+Хорошо. Теперь выберите модель устройства, она указана на коробке или маркетплейсе, где был приобретён товар.
 Следующим шагом нужно будет выбрать номер.
 
 Пример: модель - Netum, номер - C750
@@ -157,29 +165,23 @@ class BotHandler:
         safe_number = self.sanitize_filename(number)
         safe_question = self.sanitize_filename(question)
         
-        if content_type == "image":
-            path = os.path.join(
-                self.content_base_path,
-                "images",
-                safe_device,
-                safe_model,
-                safe_number,
-                f"{safe_question}.jpg"
-            )
-        elif content_type == "file":
-            path = os.path.join(
-                self.content_base_path,
-                "files",
-                safe_device,
-                safe_model,
-                safe_number,
-                f"{safe_question}.pdf"
-            )
+        path = os.path.join(
+            self.content_base_path,
+            "images" if content_type == "image" else "files",
+            safe_device,
+            safe_model,
+            safe_number,
+            f"{safe_question}.{'jpg' if content_type == 'image' else 'pdf'}"
+        )
+        
+        if not os.path.exists(path):
+            logger.error(f"Файл не найден: {path}")  
+        
         return path
 
     async def send_content(self, query, solution: Solution, device_type: str, model: str, number: str, question: str) -> None:
         content_path = self.get_content_path(device_type, model, number, question, solution.content_type)
-        
+
         try:
             if not content_path:
                 await query.message.reply_text(
@@ -206,11 +208,10 @@ class BotHandler:
                 text=f"{solution.text}\n\n{self.messages['no_content']}",
                 reply_markup=self.reply_keyboard
             )
-        except Exception as e:
-            logger.error(f"Ошибка при отправке контента: {e}")
+        except Exception as e: 
             await query.edit_message_text(
                 text=f"Произошла ошибка: {str(e)}",
-                reply_markup=self.reply_keyboard
+                reply_markup=self.reply_keyboard 
             )
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -223,7 +224,7 @@ class BotHandler:
                 InlineKeyboardButton("Принтер", callback_data="device_printer")
             ],
             [
-                InlineKeyboardButton("Пейджер", callback_data="device_pager"),
+                InlineKeyboardButton("Пейджеры", callback_data="device_pager"),
                 InlineKeyboardButton("Другое", callback_data="other")
             ]
         ]
@@ -243,38 +244,31 @@ class BotHandler:
         await query.answer()
         data = query.data
         
-        try:
-            if data == "other":
-                await query.edit_message_text(
-                    text=self.messages['other'],
-                    reply_markup=None
-                )
-            elif data.startswith("back_to_"):
-                await self.handle_back(query, data)
-            elif data.startswith("device_"):
-                device_type = data.split("_")[1]
-                await self.show_models(query, device_type)
-            elif data.startswith("model_"):
-                _, device_type, model = data.split("_")
-                await self.show_numbers(query, device_type, model)
-            elif data.startswith("number_"):
-                _, device_type, model, number = data.split("_")
-                await self.show_questions(query, device_type, model, number)
-            elif data.startswith("question_"):
-                await self.process_question(query, data)
-                
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=" ",
-                reply_markup=self.reply_keyboard
-            )
-                
-        except Exception as e:
-            logger.error(f"Ошибка обработки callback: {e}")
+
+        if data == "other":
             await query.edit_message_text(
-                text="Произошла ошибка при обработке запроса",
-                reply_markup=self.reply_keyboard
+                text=self.messages['other'],
+                reply_markup=None
             )
+        elif data.startswith("back_to_"):
+            await self.handle_back(query, data)
+        elif data.startswith("device_"):
+            device_type = data.split("_")[1]
+            await self.show_models(query, device_type)
+        elif data.startswith("model_"):
+            _, device_type, model = data.split("_")
+            await self.show_numbers(query, device_type, model)
+        elif data.startswith("number_"):
+            _, device_type, model, number = data.split("_")
+            await self.show_questions(query, device_type, model, number)
+        elif data.startswith("question_"):
+            await self.process_question(query, data)
+                
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=" ",
+            reply_markup=self.reply_keyboard
+        )
 
     async def handle_back(self, query, data: str) -> None:
         back_type = data.split("_")[2]
@@ -294,7 +288,7 @@ class BotHandler:
                 InlineKeyboardButton("Принтер", callback_data="device_printer")
             ],
             [
-                InlineKeyboardButton("Пейджер", callback_data="device_pager"),
+                InlineKeyboardButton("Пейджеры", callback_data="device_pager"),
                 InlineKeyboardButton("Другое", callback_data="other")
             ]
         ]
@@ -348,11 +342,26 @@ class BotHandler:
             **self.devices[device_type].common_questions
         }
         
+        # Получаем список всех вопросов
+        question_list = list(questions.keys())
+        
+        # Группируем вопросы по 2 на строку
         question_buttons = [
-            [InlineKeyboardButton(q[:64], callback_data=f"question_{device_type}_{model}_{number}_{q}")]
-            for q in questions.keys()
+            [
+                InlineKeyboardButton(q1[:64], callback_data=f"question_{device_type}_{model}_{number}_{q1}"),
+                InlineKeyboardButton(q2[:64], callback_data=f"question_{device_type}_{model}_{number}_{q2}")
+            ]
+            for q1, q2 in zip(question_list[::2], question_list[1::2])
         ]
         
+        # Если количество вопросов нечетное, добавляем последний вопрос отдельно
+        if len(question_list) % 2 != 0:
+            last_question = question_list[-1]
+            question_buttons.append([
+                InlineKeyboardButton(last_question[:64], callback_data=f"question_{device_type}_{model}_{number}_{last_question}")
+            ])
+        
+        # Добавляем кнопку "Назад"
         question_buttons.append(self.create_back_button(f"back_to_numbers_{device_type}_{model}"))
         
         await query.edit_message_text(
