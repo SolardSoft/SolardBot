@@ -21,6 +21,8 @@ import os
 import re
 import logging
 
+print("123")
+
 # Настройка логгирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
