@@ -181,37 +181,52 @@ class BotHandler:
 
     async def send_content(self, query, solution: Solution, device_type: str, model: str, number: str, question: str) -> None:
         content_path = self.get_content_path(device_type, model, number, question, solution.content_type)
+        
+        # Создаем клавиатуру с кнопкой "Назад"
+        back_button = self.create_back_button(f"back_to_questions_{device_type}_{model}_{number}")
+        reply_markup = InlineKeyboardMarkup([back_button])
 
         try:
             if not content_path:
-                await query.message.reply_text(
-                    solution.text,
-                    reply_markup=self.reply_keyboard
+                await query.edit_message_text(
+                    text=solution.text,
+                    reply_markup=reply_markup
                 )
             elif solution.content_type == "image":
+                # Сначала отправляем изображение
                 with open(content_path, 'rb') as photo:
                     await query.message.reply_photo(
                         photo=photo,
-                        caption=solution.text,
                         reply_markup=self.reply_keyboard
                     )
+                # Затем отправляем текст с кнопкой "Назад"
+                await query.message.reply_text(
+                    text=solution.text,
+                    reply_markup=reply_markup
+                )
+                await query.delete_message()
             elif solution.content_type == "file":
+                # Сначала отправляем файл
                 with open(content_path, 'rb') as file:
                     await query.message.reply_document(
                         document=file,
-                        caption=solution.text,
                         reply_markup=self.reply_keyboard
                     )
-            await query.delete_message()
+                # Затем отправляем текст с кнопкой "Назад"
+                await query.message.reply_text(
+                    text=solution.text,
+                    reply_markup=reply_markup
+                )
+                await query.delete_message()
         except FileNotFoundError:
             await query.edit_message_text(
                 text=f"{solution.text}\n\n{self.messages['no_content']}",
-                reply_markup=self.reply_keyboard
+                reply_markup=reply_markup
             )
         except Exception as e: 
             await query.edit_message_text(
                 text=f"Произошла ошибка: {str(e)}",
-                reply_markup=self.reply_keyboard 
+                reply_markup=reply_markup
             )
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -280,6 +295,9 @@ class BotHandler:
         elif back_type == "numbers":
             _, _, _, device_type, model = data.split("_")
             await self.show_numbers(query, device_type, model)
+        elif back_type == "questions":
+            _, _, _, device_type, model, number = data.split("_")
+            await self.show_questions(query, device_type, model, number)
 
     async def start_callback(self, query) -> None:
         device_buttons = [
