@@ -49,7 +49,7 @@ class Device:
 
 class BotHandler:
     def __init__(self):
-        self.content_base_path = r"D:\programs\SolardBot"
+        self.content_base_path = os.getenv("CONTENT_BASE_PATH", "data")
         self.devices = {
             'scanner': Device(
                 name="Сканер",
