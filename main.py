@@ -137,13 +137,9 @@ class BotHandler:
 
             'other': """           
 Пожалуйста, опишите вашу проблему нашему специалисту: @SOLARDTEX
-""",
+"""
 
 #################
-
-            'no_content': """
-[Контент недоступен]
-"""
         }
 
         self.reply_keyboard = ReplyKeyboardMarkup(
@@ -211,13 +207,25 @@ class BotHandler:
                 await query.message.reply_text(text=solution.text, reply_markup=reply_markup)
                 await query.delete_message()
         except FileNotFoundError:
+            error_msg = (
+                f"{solution.text}\n\n"
+                f"⚠ Контент недоступен\n"
+                f"Путь: {content_path}\n"
+                f"Причина: файл не найден"
+            )
             await query.edit_message_text(
-                text=f"{solution.text}\n\n{self.messages['no_content']}",
+                text=error_msg,
                 reply_markup=reply_markup
             )
-        except Exception as e: 
+        except Exception as e:
+            error_msg = (
+                f"{solution.text}\n\n"
+                f"⚠ Произошла ошибка\n"
+                f"Путь: {content_path}\n"
+                f"Причина: {str(e)}"
+            )
             await query.edit_message_text(
-                text=f"Произошла ошибка: {str(e)}",
+                text=error_msg,
                 reply_markup=reply_markup
             )
 
