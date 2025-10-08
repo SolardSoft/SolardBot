@@ -20,8 +20,11 @@ import os
 import re
 import logging
 import hashlib
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import pytz
+import asyncio
+import threading
+import time
 
 from statistics import StatisticsManager
 from stats_handler import StatsHandler
@@ -439,11 +442,105 @@ class BotHandler:
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Ошибка: {context.error}")
 
+async def test_daily_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда для тестирования отправки ежедневной статистики"""
+    if not update.message:
+        return
+    
+    user_id = update.message.from_user.id
+    
+    # Проверяем, что команду запускает администратор
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
+    
+    await update.message.reply_text("🔄 Тестируем отправку ежедневной статистики...")
+    
+    try:
+        # Вызываем функцию отправки статистики
+        await daily_stats_job(context)
+        await update.message.reply_text("✅ Тест прошел успешно! Статистика отправлена.")
+    except Exception as e:
+        logger.error(f"Ошибка при тестировании статистики: {e}")
+        await update.message.reply_text(f"❌ Ошибка при тестировании: {str(e)}")
+
+def get_moscow_time():
+    """Получение текущего времени в МСК"""
+    moscow_tz = pytz.timezone('Europe/Moscow')
+    return datetime.now(moscow_tz)
+
 async def daily_stats_job(context: ContextTypes.DEFAULT_TYPE):
     """Задача для ежедневной отправки статистики"""
-    bot_handler = context.bot_data.get('bot_handler')
-    if bot_handler:
-        await bot_handler.stats_handler.send_daily_stats(context)
+    try:
+        bot_handler = context.bot_data.get('bot_handler')
+        if not bot_handler:
+            logger.error("BotHandler не найден в bot_data")
+            return
+            
+        moscow_time = get_moscow_time()
+        logger.info(f"Начинаем отправку ежедневной статистики... Время МСК: {moscow_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Получаем статистику за вчерашний день (по МСК)
+        yesterday = (moscow_time - timedelta(days=1)).strftime('%Y-%m-%d')
+        stats = bot_handler.stats_manager.get_daily_stats(yesterday)
+        
+        # Сохраняем статистику
+        bot_handler.stats_manager.save_daily_stats(yesterday, stats)
+        
+        # Форматируем сообщение
+        message = bot_handler.stats_handler.format_stats_message(stats)
+        
+        # Отправляем сообщение
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=message,
+            parse_mode='HTML'
+        )
+        
+        logger.info(f"Ежедневная статистика отправлена в чат за {yesterday}")
+        
+    except Exception as e:
+        logger.error(f"Ошибка при отправке ежедневной статистики: {e}")
+
+def scheduler_worker(application):
+    """Рабочий поток планировщика"""
+    while True:
+        try:
+            moscow_time = get_moscow_time()
+            
+            # Проверяем, наступило ли время отправки (00:00 МСК)
+            if moscow_time.hour == 0 and moscow_time.minute == 0:
+                logger.info(f"Наступило время отправки статистики: {moscow_time.strftime('%Y-%m-%d %H:%M:%S')} МСК")
+                
+                # Создаем контекст для отправки статистики
+                class MockContext:
+                    def __init__(self, app):
+                        self.bot_data = app.bot_data
+                        self.bot = app.bot
+                
+                context = MockContext(application)
+                
+                # Запускаем отправку статистики в новом потоке событий
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(daily_stats_job(context))
+                loop.close()
+                
+                # Ждем минуту, чтобы не отправить дважды
+                time.sleep(60)
+            
+            # Проверяем каждые 30 секунд
+            time.sleep(30)
+            
+        except Exception as e:
+            logger.error(f"Ошибка в планировщике: {e}")
+            time.sleep(60)
+
+def start_scheduler(application):
+    """Запуск планировщика в отдельном потоке"""
+    scheduler_thread = threading.Thread(target=scheduler_worker, args=(application,), daemon=True)
+    scheduler_thread.start()
+    logger.info("Планировщик ежедневной статистики запущен в отдельном потоке")
 
 
 def main() -> None:
@@ -459,13 +556,14 @@ def main() -> None:
     application.add_handler(CommandHandler("mystatsb1", bot_handler.stats_handler.user_stats_command))
     application.add_handler(CommandHandler("weekstatsb1", bot_handler.stats_handler.weekly_stats_command))
     application.add_handler(CommandHandler("monthstatsb1", bot_handler.stats_handler.monthly_stats_command))
+    application.add_handler(CommandHandler("teststatsb1", test_daily_stats_command))
     application.add_handler(CallbackQueryHandler(bot_handler.handle_callback))
     application.add_handler(MessageHandler(filters.Text(["/start"]), bot_handler.start))
     
-    # Ежедневная статистика отправляется отдельным скриптом daily_stats_scheduler.py
-    logger.info("Для ежедневной статистики запустите: python daily_stats_scheduler.py")
+    # Запускаем планировщик ежедневной статистики
+    start_scheduler(application)
     
-    logger.info("Бот запущен...")
+    logger.info("Бот запущен с интегрированным планировщиком ежедневной статистики...")
     application.run_polling()
 
 if __name__ == '__main__':
