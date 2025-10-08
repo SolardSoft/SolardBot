@@ -95,21 +95,34 @@ class StatisticsManager:
     def log_action(self, user_id: int, action_type: str, device_type: str = None, 
                    model: str = None, number: str = None, question: str = None):
         """Логирование действия пользователя"""
+        import pytz
+        from datetime import datetime
+        
+        # Получаем московское время
+        moscow_tz = pytz.timezone('Europe/Moscow')
+        moscow_time = datetime.now(moscow_tz)
+        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO user_actions (user_id, action_type, device_type, model, number, question)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, action_type, device_type, model, number, question))
+            INSERT INTO user_actions (user_id, action_type, device_type, model, number, question, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, action_type, device_type, model, number, question, moscow_time.strftime('%Y-%m-%d %H:%M:%S')))
         
         conn.commit()
         conn.close()
     
     def get_daily_stats(self, date: str = None) -> Dict:
         """Получение статистики за день"""
+        import pytz
+        from datetime import datetime
+        
         if date is None:
-            date = datetime.now().strftime('%Y-%m-%d')
+            # Получаем московское время
+            moscow_tz = pytz.timezone('Europe/Moscow')
+            moscow_time = datetime.now(moscow_tz)
+            date = moscow_time.strftime('%Y-%m-%d')
         
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -179,6 +192,14 @@ class StatisticsManager:
     
     def get_weekly_stats(self) -> Dict:
         """Получение статистики за неделю"""
+        import pytz
+        from datetime import datetime, timedelta
+        
+        # Получаем московское время
+        moscow_tz = pytz.timezone('Europe/Moscow')
+        moscow_time = datetime.now(moscow_tz)
+        week_ago = moscow_time - timedelta(days=7)
+        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -186,38 +207,38 @@ class StatisticsManager:
         cursor.execute('''
             SELECT DATE(timestamp) as date, COUNT(*) as actions
             FROM user_actions 
-            WHERE timestamp >= datetime('now', '-7 days')
+            WHERE timestamp >= ?
             GROUP BY DATE(timestamp)
             ORDER BY date
-        ''')
+        ''', (week_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         daily_actions = dict(cursor.fetchall())
         
         # Общая статистика за неделю
         cursor.execute('''
             SELECT COUNT(DISTINCT user_id) as unique_users, COUNT(*) as total_actions
             FROM user_actions 
-            WHERE timestamp >= datetime('now', '-7 days')
-        ''')
+            WHERE timestamp >= ?
+        ''', (week_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         weekly_total = cursor.fetchone()
         
         # Статистика по номерам устройств за неделю
         cursor.execute('''
             SELECT number, COUNT(*) as count
             FROM user_actions
-            WHERE timestamp >= datetime('now', '-7 days') AND number IS NOT NULL
+            WHERE timestamp >= ? AND number IS NOT NULL
             GROUP BY number
             ORDER BY count DESC
-        ''')
+        ''', (week_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         device_stats = dict(cursor.fetchall())
         
         # Статистика по вопросам за неделю
         cursor.execute('''
             SELECT question, COUNT(*) as count
             FROM user_actions
-            WHERE timestamp >= datetime('now', '-7 days') AND question IS NOT NULL
+            WHERE timestamp >= ? AND question IS NOT NULL
             GROUP BY question
             ORDER BY count DESC
-        ''')
+        ''', (week_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         question_stats = dict(cursor.fetchall())
         
         # Топ пользователи за неделю
@@ -225,11 +246,11 @@ class StatisticsManager:
             SELECT u.user_id, u.username, u.first_name, COUNT(*) as action_count
             FROM user_actions ua
             JOIN users u ON ua.user_id = u.user_id
-            WHERE ua.timestamp >= datetime('now', '-7 days')
+            WHERE ua.timestamp >= ?
             GROUP BY ua.user_id
             ORDER BY action_count DESC
             LIMIT 5
-        ''')
+        ''', (week_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         top_users = cursor.fetchall()
         
         conn.close()
@@ -245,6 +266,14 @@ class StatisticsManager:
     
     def get_monthly_stats(self) -> Dict:
         """Получение статистики за месяц"""
+        import pytz
+        from datetime import datetime, timedelta
+        
+        # Получаем московское время
+        moscow_tz = pytz.timezone('Europe/Moscow')
+        moscow_time = datetime.now(moscow_tz)
+        month_ago = moscow_time - timedelta(days=30)
+        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -252,38 +281,38 @@ class StatisticsManager:
         cursor.execute('''
             SELECT DATE(timestamp) as date, COUNT(*) as actions
             FROM user_actions 
-            WHERE timestamp >= datetime('now', '-30 days')
+            WHERE timestamp >= ?
             GROUP BY DATE(timestamp)
             ORDER BY date
-        ''')
+        ''', (month_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         daily_actions = dict(cursor.fetchall())
         
         # Общая статистика за месяц
         cursor.execute('''
             SELECT COUNT(DISTINCT user_id) as unique_users, COUNT(*) as total_actions
             FROM user_actions 
-            WHERE timestamp >= datetime('now', '-30 days')
-        ''')
+            WHERE timestamp >= ?
+        ''', (month_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         monthly_total = cursor.fetchone()
         
         # Статистика по номерам устройств за месяц
         cursor.execute('''
             SELECT number, COUNT(*) as count
             FROM user_actions
-            WHERE timestamp >= datetime('now', '-30 days') AND number IS NOT NULL
+            WHERE timestamp >= ? AND number IS NOT NULL
             GROUP BY number
             ORDER BY count DESC
-        ''')
+        ''', (month_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         device_stats = dict(cursor.fetchall())
         
         # Статистика по вопросам за месяц
         cursor.execute('''
             SELECT question, COUNT(*) as count
             FROM user_actions
-            WHERE timestamp >= datetime('now', '-30 days') AND question IS NOT NULL
+            WHERE timestamp >= ? AND question IS NOT NULL
             GROUP BY question
             ORDER BY count DESC
-        ''')
+        ''', (month_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         question_stats = dict(cursor.fetchall())
         
         # Топ пользователи за месяц
@@ -291,21 +320,21 @@ class StatisticsManager:
             SELECT u.user_id, u.username, u.first_name, COUNT(*) as action_count
             FROM user_actions ua
             JOIN users u ON ua.user_id = u.user_id
-            WHERE ua.timestamp >= datetime('now', '-30 days')
+            WHERE ua.timestamp >= ?
             GROUP BY ua.user_id
             ORDER BY action_count DESC
             LIMIT 10
-        ''')
+        ''', (month_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         top_users = cursor.fetchall()
         
         # Статистика по неделям месяца
         cursor.execute('''
             SELECT strftime('%Y-%W', timestamp) as week, COUNT(*) as actions
             FROM user_actions 
-            WHERE timestamp >= datetime('now', '-30 days')
+            WHERE timestamp >= ?
             GROUP BY strftime('%Y-%W', timestamp)
             ORDER BY week
-        ''')
+        ''', (month_ago.strftime('%Y-%m-%d %H:%M:%S'),))
         weekly_actions = dict(cursor.fetchall())
         
         conn.close()
@@ -400,22 +429,30 @@ class StatisticsManager:
     
     def cleanup_old_data(self, days_to_keep: int = 90):
         """Очистка старых данных (по умолчанию оставляем 90 дней)"""
+        import pytz
+        from datetime import datetime, timedelta
+        
+        # Получаем московское время
+        moscow_tz = pytz.timezone('Europe/Moscow')
+        moscow_time = datetime.now(moscow_tz)
+        cutoff_date = moscow_time - timedelta(days=days_to_keep)
+        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         # Удаляем старые действия
         cursor.execute('''
             DELETE FROM user_actions 
-            WHERE timestamp < datetime('now', '-{} days')
-        '''.format(days_to_keep))
+            WHERE timestamp < ?
+        ''', (cutoff_date.strftime('%Y-%m-%d %H:%M:%S'),))
         
         deleted_actions = cursor.rowcount
         
         # Удаляем старую ежедневную статистику
         cursor.execute('''
             DELETE FROM daily_stats 
-            WHERE date < date('now', '-{} days')
-        '''.format(days_to_keep))
+            WHERE date < ?
+        ''', (cutoff_date.strftime('%Y-%m-%d'),))
         
         deleted_stats = cursor.rowcount
         
