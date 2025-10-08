@@ -20,6 +20,11 @@ import os
 import re
 import logging
 import hashlib
+from datetime import datetime, time
+import pytz
+
+from statistics import StatisticsManager
+from stats_handler import StatsHandler
 
 # Настройка логгирования
 logging.basicConfig(
@@ -30,6 +35,12 @@ logger = logging.getLogger(__name__)
 
 load_dotenv('token.env')
 TOKEN = os.getenv("TOKEN")
+
+# ID админского чата для отправки ежедневной статистики
+ADMIN_CHAT_ID = "-4742593122"
+
+# ID администраторов бота
+ADMIN_IDS = [550680968]
 
 @dataclass
 class Solution:
@@ -50,6 +61,7 @@ class Device:
 class BotHandler:
     def __init__(self):
         self.content_base_path = os.getenv("CONTENT_BASE_PATH", "data")
+        self.stats_manager = StatisticsManager()
         self.devices = {
             'scanner': Device(
                 name="Сканер",
@@ -150,6 +162,10 @@ class BotHandler:
 
         # Хранилище ID вопросов (временное)
         self.question_map = {}
+        
+        # Инициализация обработчика статистики
+        self.stats_handler = StatsHandler(self.stats_manager, self.devices)
+    
 
     def create_back_button(self, back_data: str) -> List[InlineKeyboardButton]:
         return [InlineKeyboardButton("« Назад", callback_data=back_data)]
@@ -232,6 +248,19 @@ class BotHandler:
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not update.message:
             return
+        
+        user = update.message.from_user
+        
+        # Обновляем информацию о пользователе
+        self.stats_manager.update_user_info(
+            user_id=user.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name
+        )
+        
+        # Логируем действие
+        self.stats_manager.log_action(user.id, "start")
             
         device_buttons = [
             [
@@ -255,19 +284,24 @@ class BotHandler:
         query = update.callback_query
         await query.answer()
         data = query.data
+        user_id = query.from_user.id
 
         if data == "other":
+            self.stats_manager.log_action(user_id, "other_selected")
             await query.edit_message_text(text=self.messages['other'], reply_markup=None)
         elif data.startswith("back_to_"):
             await self.handle_back(query, data)
         elif data.startswith("device_"):
             device_type = data.split("_")[1]
+            self.stats_manager.log_action(user_id, "device_selected", device_type=device_type)
             await self.show_models(query, device_type)
         elif data.startswith("model_"):
             _, device_type, model = data.split("_")
+            self.stats_manager.log_action(user_id, "model_selected", device_type=device_type, model=model)
             await self.show_numbers(query, device_type, model)
         elif data.startswith("number_"):
             _, device_type, model, number = data.split("_")
+            self.stats_manager.log_action(user_id, "number_selected", device_type=device_type, model=model, number=number)
             await self.show_questions(query, device_type, model, number)
         elif data.startswith("question_"):
             await self.process_question(query, data)
@@ -372,6 +406,7 @@ class BotHandler:
 
     async def process_question(self, query, callback_data: str) -> None:
         _, q_id = callback_data.split("_", 1)
+        user_id = query.from_user.id
 
         if q_id not in self.question_map:
             await query.edit_message_text("Решение не найдено", reply_markup=self.reply_keyboard)
@@ -379,6 +414,16 @@ class BotHandler:
 
         device_type, model, number, question_text = self.question_map.pop(q_id)  # pop удаляет после использования
         model_key = f"{device_type}/{model}/{number}"
+
+        # Логируем выбор вопроса
+        self.stats_manager.log_action(
+            user_id, 
+            "question_selected", 
+            device_type=device_type, 
+            model=model, 
+            number=number, 
+            question=question_text
+        )
 
         solution = (
             self.model_questions.get(model_key, {}).get(question_text) or
@@ -394,14 +439,31 @@ class BotHandler:
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(f"Ошибка: {context.error}")
 
+async def daily_stats_job(context: ContextTypes.DEFAULT_TYPE):
+    """Задача для ежедневной отправки статистики"""
+    bot_handler = context.bot_data.get('bot_handler')
+    if bot_handler:
+        await bot_handler.stats_handler.send_daily_stats(context)
+
+
 def main() -> None:
     bot_handler = BotHandler()
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).job_queue(None).build()
+    
+    # Сохраняем экземпляр бота в bot_data для доступа из задач
+    application.bot_data['bot_handler'] = bot_handler
     
     application.add_error_handler(error_handler)
     application.add_handler(CommandHandler("start", bot_handler.start))
+    application.add_handler(CommandHandler("statsb1", bot_handler.stats_handler.stats_command))
+    application.add_handler(CommandHandler("mystatsb1", bot_handler.stats_handler.user_stats_command))
+    application.add_handler(CommandHandler("weekstatsb1", bot_handler.stats_handler.weekly_stats_command))
+    application.add_handler(CommandHandler("monthstatsb1", bot_handler.stats_handler.monthly_stats_command))
     application.add_handler(CallbackQueryHandler(bot_handler.handle_callback))
     application.add_handler(MessageHandler(filters.Text(["/start"]), bot_handler.start))
+    
+    # Ежедневная статистика отправляется отдельным скриптом daily_stats_scheduler.py
+    logger.info("Для ежедневной статистики запустите: python daily_stats_scheduler.py")
     
     logger.info("Бот запущен...")
     application.run_polling()
