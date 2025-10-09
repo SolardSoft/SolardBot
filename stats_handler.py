@@ -11,13 +11,9 @@ from telegram.ext import ContextTypes
 
 from statistics import StatisticsManager
 
-# Импортируем константы из main.py
-try:
-    from main import ADMIN_CHAT_ID, ADMIN_IDS
-except ImportError:
-    # Если импорт не удался, используем значения по умолчанию
-    ADMIN_CHAT_ID = "-4742593122"
-    ADMIN_IDS = [550680968]
+# Константы для админов
+ADMIN_CHAT_ID = "-4742593122"
+ADMIN_IDS = [550680968]
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +98,8 @@ class StatsHandler:
         logger.info(f"Пользователь {user_id} пытается получить статистику")
         logger.info(f"ADMIN_CHAT_ID: {ADMIN_CHAT_ID}")
         logger.info(f"ADMIN_IDS: {ADMIN_IDS}")
+        logger.info(f"Проверка прав: user_id in ADMIN_IDS = {user_id in ADMIN_IDS}")
+        logger.info(f"Проверка прав: str(user_id) == ADMIN_CHAT_ID = {str(user_id) == ADMIN_CHAT_ID}")
         
         if user_id not in ADMIN_IDS and str(user_id) != ADMIN_CHAT_ID:
             await update.message.reply_text(f"❌ У вас нет прав для просмотра статистики\nВаш ID: {user_id}\nОжидаемые ID: {ADMIN_IDS}\n\nИспользуйте команды:\n• /statsb1 - статистика за день\n• /mystatsb1 - персональная статистика\n• /weekstatsb1 - статистика за неделю\n• /monthstatsb1 - статистика за месяц")
