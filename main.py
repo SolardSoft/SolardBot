@@ -43,7 +43,7 @@ TOKEN = os.getenv("TOKEN")
 ADMIN_CHAT_ID = "-4742593122"
 
 # ID администраторов бота
-ADMIN_IDS = [550680968]
+ADMIN_IDS = [550680968, 332518486, 7068694127]
 
 @dataclass
 class Solution:
