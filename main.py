@@ -480,12 +480,12 @@ async def daily_stats_job(context: ContextTypes.DEFAULT_TYPE):
         moscow_time = get_moscow_time()
         logger.info(f"Начинаем отправку ежедневной статистики... Время МСК: {moscow_time.strftime('%Y-%m-%d %H:%M:%S')}")
         
-        # Получаем статистику за вчерашний день (по МСК)
-        yesterday = (moscow_time - timedelta(days=1)).strftime('%Y-%m-%d')
-        stats = bot_handler.stats_manager.get_daily_stats(yesterday)
+        # Получаем статистику за текущий день (по МСК)
+        today = moscow_time.strftime('%Y-%m-%d')
+        stats = bot_handler.stats_manager.get_daily_stats(today)
         
         # Сохраняем статистику
-        bot_handler.stats_manager.save_daily_stats(yesterday, stats)
+        bot_handler.stats_manager.save_daily_stats(today, stats)
         
         # Форматируем сообщение
         message = bot_handler.stats_handler.format_stats_message(stats)
@@ -497,10 +497,18 @@ async def daily_stats_job(context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
         
-        logger.info(f"Ежедневная статистика отправлена в чат за {yesterday}")
+        logger.info(f"Ежедневная статистика отправлена в чат за {today}")
         
     except Exception as e:
         logger.error(f"Ошибка при отправке ежедневной статистики: {e}")
+        # Пытаемся уведомить администратора об ошибке
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=f"❌ Ошибка при отправке ежедневной статистики: {str(e)}"
+            )
+        except Exception as notify_err:
+            logger.error(f"Не удалось отправить сообщение об ошибке администратору: {notify_err}")
 
 def scheduler_worker(application):
     """Рабочий поток планировщика"""
@@ -508,8 +516,8 @@ def scheduler_worker(application):
         try:
             moscow_time = get_moscow_time()
             
-            # Проверяем, наступило ли время отправки (00:00 МСК)
-            if moscow_time.hour == 0 and moscow_time.minute == 0:
+            # Проверяем, наступило ли время отправки (15:00 МСК) — тестовый режим
+            if moscow_time.hour == 15 and moscow_time.minute == 0:
                 logger.info(f"Наступило время отправки статистики: {moscow_time.strftime('%Y-%m-%d %H:%M:%S')} МСК")
                 
                 # Создаем контекст для отправки статистики
