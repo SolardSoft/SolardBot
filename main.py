@@ -40,7 +40,7 @@ load_dotenv('token.env')
 TOKEN = os.getenv("TOKEN")
 
 # ID админского чата для отправки ежедневной статистики
-ADMIN_CHAT_ID = "-4742593122"
+ADMIN_CHAT_ID = "-1003131568927"
 
 # ID администраторов бота
 ADMIN_IDS = [550680968, 332518486, 7068694127]
@@ -516,8 +516,8 @@ def scheduler_worker(application):
         try:
             moscow_time = get_moscow_time()
             
-            # Проверяем, наступило ли время отправки (15:00 МСК) — тестовый режим
-            if moscow_time.hour == 15 and moscow_time.minute == 0:
+            # Проверяем, наступило ли время отправки (15:05 МСК) — тестовый режим
+            if moscow_time.hour == 15 and moscow_time.minute == 5:
                 logger.info(f"Наступило время отправки статистики: {moscow_time.strftime('%Y-%m-%d %H:%M:%S')} МСК")
                 
                 # Создаем контекст для отправки статистики
