@@ -43,7 +43,7 @@ TOKEN = os.getenv("TOKEN")
 ADMIN_CHAT_ID = "-1003131568927"
 
 # ID администраторов бота
-ADMIN_IDS = [550680968, 332518486, 7068694127]
+ADMIN_IDS = [550680968, 332518486, 7068694127, 1118098514]
 
 @dataclass
 class Solution:
@@ -516,8 +516,8 @@ def scheduler_worker(application):
         try:
             moscow_time = get_moscow_time()
             
-            # Проверяем, наступило ли время отправки (15:05 МСК) — тестовый режим
-            if moscow_time.hour == 15 and moscow_time.minute == 5:
+            # Проверяем, наступило ли время отправки (23:55 МСК)
+            if moscow_time.hour == 23 and moscow_time.minute == 55:
                 logger.info(f"Наступило время отправки статистики: {moscow_time.strftime('%Y-%m-%d %H:%M:%S')} МСК")
                 
                 # Создаем контекст для отправки статистики
