@@ -72,7 +72,7 @@ class BotHandler:
                     'netum': DeviceModel(name="Netum", numbers=["C750", "1228BL"]),
                     'kefar': DeviceModel(name="Kefar", numbers=["H4W/H4B", "C70"]),
                     'holyhah': DeviceModel(name="Holyhah", numbers=["A60DZ/A66DZ", "A30D/A3D"]),
-                    'chiypos': DeviceModel(name="Chiypos", numbers=["1680SW", "1690SW"]),
+                    'chiypos': DeviceModel(name="Chiypos", numbers=["1680S", "1690SW"]),
                 },
                 common_questions={
                     "Инструкция": Solution(text="Инструкция на русском языке:", content_type="file"),
@@ -82,7 +82,7 @@ class BotHandler:
             'printer': Device(
                 name="Принтер",
                 models={
-                    'xprinter': DeviceModel(name="XPrinter", numbers=["XP365B", "XP422"]),
+                    'xprinter': DeviceModel(name="XPrinter", numbers=["365B", "420", "323", "58IIZ"]),
                     'niimbot': DeviceModel(name="NIIMBOT", numbers=["B21", "D11", "D110"])
                 },
                 common_questions={
@@ -508,50 +508,55 @@ async def daily_stats_job(context: ContextTypes.DEFAULT_TYPE):
         except Exception as notify_err:
             logger.error(f"Не удалось отправить сообщение об ошибке администратору: {notify_err}")
 
-def scheduler_worker(application):
+def scheduler_worker(application, main_loop):
     """Рабочий поток планировщика"""
     while True:
         try:
             moscow_time = get_moscow_time()
-            
+
             # Проверяем, наступило ли время отправки (23:55 МСК)
             if moscow_time.hour == 23 and moscow_time.minute == 55:
                 logger.info(f"Наступило время отправки статистики: {moscow_time.strftime('%Y-%m-%d %H:%M:%S')} МСК")
-                
-                # Создаем контекст для отправки статистики
+
                 class MockContext:
                     def __init__(self, app):
                         self.bot_data = app.bot_data
                         self.bot = app.bot
-                
+
                 context = MockContext(application)
-                
-                # Запускаем отправку статистики в новом потоке событий
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(daily_stats_job(context))
-                loop.close()
-                
+
+                # Передаём корутину в главный event loop, а не создаём новый
+                future = asyncio.run_coroutine_threadsafe(daily_stats_job(context), main_loop)
+                try:
+                    future.result(timeout=60)
+                except Exception as e:
+                    logger.error(f"Ошибка при выполнении задачи статистики: {e}")
+
                 # Ждем минуту, чтобы не отправить дважды
                 time.sleep(60)
-            
+
             # Проверяем каждые 30 секунд
             time.sleep(30)
-            
+
         except Exception as e:
             logger.error(f"Ошибка в планировщике: {e}")
             time.sleep(60)
 
-def start_scheduler(application):
+def start_scheduler(application, main_loop):
     """Запуск планировщика в отдельном потоке"""
-    scheduler_thread = threading.Thread(target=scheduler_worker, args=(application,), daemon=True)
+    scheduler_thread = threading.Thread(target=scheduler_worker, args=(application, main_loop), daemon=True)
     scheduler_thread.start()
     logger.info("Планировщик ежедневной статистики запущен в отдельном потоке")
+
+async def post_init(application) -> None:
+    """Захватываем главный event loop и запускаем планировщик"""
+    loop = asyncio.get_running_loop()
+    start_scheduler(application, loop)
 
 
 def main() -> None:
     bot_handler = BotHandler()
-    application = Application.builder().token(TOKEN).job_queue(None).build()
+    application = Application.builder().token(TOKEN).post_init(post_init).job_queue(None).build()
     
     # Сохраняем экземпляр бота в bot_data для доступа из задач
     application.bot_data['bot_handler'] = bot_handler
@@ -565,9 +570,6 @@ def main() -> None:
     application.add_handler(CommandHandler("teststatsb1", test_daily_stats_command))
     application.add_handler(CallbackQueryHandler(bot_handler.handle_callback))
     application.add_handler(MessageHandler(filters.Text(["/start"]), bot_handler.start))
-    
-    # Запускаем планировщик ежедневной статистики
-    start_scheduler(application)
     
     logger.info("Бот запущен с интегрированным планировщиком ежедневной статистики...")
     application.run_polling()
